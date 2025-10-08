@@ -11,8 +11,14 @@ BRANCH_NAME = (
 )
 
 test_steps = [
+    step(
+        label=":git: git lfs pull",
+        key="git-lfs-pull",
+        command="git lfs pull",
+    ),
     group(
         name=":c: C",
+        depends_on=["git-lfs-pull"],
         steps=[
             c_step(label="db-c-example", command="cd libs/db; cc examples/client.c -lm"),
             c_step(
@@ -23,6 +29,7 @@ test_steps = [
     ),
     group(
         name=":crab: rust",
+        depends_on=["git-lfs-pull"],
         steps=[
             rust_step(
                 label="clippy",
@@ -112,6 +119,7 @@ test_steps = [
     step(
         label=":nix: elodin-cli",
         key="elodin-cli",
+        depends_on=["git-lfs-pull"],
         command="nix build .#elodin-cli",
     ),
     group(
