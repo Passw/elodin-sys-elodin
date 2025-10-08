@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "--- Pulling Git LFS objects"
+git lfs install --local
+git lfs pull
+git submodule foreach --recursive 'git lfs install --local && git lfs pull'
