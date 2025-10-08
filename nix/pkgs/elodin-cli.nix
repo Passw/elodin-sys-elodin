@@ -3,26 +3,32 @@
   crane,
   rustToolchain,
   lib,
+  elodinPy,
+  python,
+  pythonPackages,
   ...
 }: let
   craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
   pname = (craneLib.crateNameFromCargoToml {cargoToml = ../../apps/elodin/Cargo.toml;}).pname;
   version = (craneLib.crateNameFromCargoToml {cargoToml = ../../Cargo.toml;}).version;
   src = pkgs.nix-gitignore.gitignoreSource [] ../../.;
+  pythonPath = pythonPackages.makePythonPath [elodinPy];
+  pythonMajorMinor = lib.versions.majorMinor python.version;
 
-  commonArgs = {
+  commonArgs = with pkgs; {
     inherit pname version;
     inherit src;
     doCheck = false;
     cargoExtraArgs = "--package=${pname}";
-    buildInputs = with pkgs;
+    nativeBuildInputs = [makeWrapper];
+    buildInputs =
       [
         pkg-config
-        python3
         cmake
         gfortran
+        python
       ]
-      ++ lib.optionals pkgs.stdenv.isLinux [
+      ++ lib.optionals stdenv.isLinux [
         alsa-lib
         udev
       ];
@@ -47,6 +53,12 @@
     // {
       inherit cargoArtifacts;
       doCheck = false;
+      postInstall = ''
+        wrapProgram $out/bin/elodin \
+          --prefix PATH : "${python}/bin" \
+          --prefix PYTHONPATH : "${pythonPath}" \
+          --prefix PYTHONPATH : "${python}/lib/python${pythonMajorMinor}" \
+      '';
     }
   );
 
