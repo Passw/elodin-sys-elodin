@@ -12,7 +12,7 @@ use bevy::{
         system::{Commands, InRef, IntoSystem, Query, Res, ResMut, System},
         world::World,
     },
-    log::{error, info},
+    log::{error, info, warn},
     pbr::{StandardMaterial, wireframe::WireframeConfig},
     prelude::In,
     render::view::Visibility,
@@ -21,7 +21,7 @@ use bevy_infinite_grid::InfiniteGrid;
 use egui_tiles::TileId;
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use impeller2::types::msg_id;
-use impeller2_bevy::{ComponentPathRegistry, CurrentStreamId, EntityMap, PacketTx};
+use impeller2_bevy::{ComponentPathRegistry, CurrentStreamId, EntityMap, PacketTx, CommandsExt};
 use impeller2_kdl::ToKdl;
 use impeller2_wkt::{
     ComponentPath, ComponentValue, DbConfig, IsRecording, Material, Mesh, Object3D, SetDbConfig,
@@ -652,6 +652,31 @@ pub fn save_schematic_db() -> PaletteItem {
     )
 }
 
+pub fn save_db_native() -> PaletteItem {
+    PaletteItem::new(
+        "Save DB…",
+        PRESETS_LABEL,
+        |_name: In<String>, mut commands: Commands| {
+            // Minimal UX: send request and exit; log result when reply arrives.
+            commands.send_req_reply(
+                impeller2_wkt::SaveNative,
+                |res: In<Result<impeller2_wkt::NativeSaved, impeller2_wkt::ErrorResponse>>| {
+                    match res.0 {
+                        Ok(saved) => {
+                            info!(path = ?saved.path, "Saved DB");
+                        }
+                        Err(err) => {
+                            warn!(?err, "Failed to save DB");
+                        }
+                    }
+                    true
+                },
+            );
+            PaletteEvent::Exit
+        },
+    )
+}
+
 pub fn save_schematic_inner() -> PaletteItem {
     PaletteItem::new(
         LabelSource::placeholder("Enter a name for the schematic"),
@@ -1083,6 +1108,7 @@ impl Default for PalettePage {
             save_schematic(),
             save_schematic_as(),
             save_schematic_db(),
+            save_db_native(),
             load_schematic(),
             set_color_scheme(),
             PaletteItem::new("Documentation", HELP_LABEL, |_: In<String>| {

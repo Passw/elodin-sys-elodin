@@ -134,6 +134,38 @@ impl DB {
         db_state.write(self.path.join("db_state"))
     }
 
+    // Save the native DB by copying the entire db directory to
+    // ~/Documents/Elodin/runs/<ts>/db with atomic rename from db.tmp.
+    pub fn save_native(&self) -> Result<PathBuf, Error> {
+        let runs_base = default_runs_dir();
+        std::fs::create_dir_all(&runs_base)?;
+
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Build a unique run directory name using epoch seconds.
+        let mut run_dir = runs_base.join(format!("{}", ts));
+        let mut i = 1u32;
+        while run_dir.exists() {
+            run_dir = runs_base.join(format!("{}-{}", ts, i));
+            i += 1;
+        }
+        std::fs::create_dir_all(&run_dir)?;
+
+        let final_db_dir = run_dir.join("db");
+        let tmp_db_dir = run_dir.join("db.tmp");
+        // Clean any previous tmp and create fresh
+        let _ = std::fs::remove_dir_all(&tmp_db_dir);
+        std::fs::create_dir_all(&tmp_db_dir)?;
+
+        copy_dir_recursively(&self.path, &tmp_db_dir)?;
+        std::fs::rename(&tmp_db_dir, &final_db_dir)?;
+        debug!(?final_db_dir, "saved native db");
+        Ok(final_db_dir)
+    }
+
     pub fn open(path: PathBuf) -> Result<Self, Error> {
         let mut component_metadata = HashMap::new();
         let mut components = HashMap::new();
@@ -370,6 +402,34 @@ impl State {
         msg_log.set_metadata(metadata)?;
         Ok(())
     }
+}
+
+fn default_runs_dir() -> PathBuf {
+    // Prefer HOME (Unix) then USERPROFILE (Windows)
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join("Documents").join("Elodin").join("runs")
+}
+
+fn copy_dir_recursively(src: &Path, dst: &Path) -> Result<(), Error> {
+    for entry in std::fs::read_dir(src)? {
+        let entry = match entry { Ok(e) => e, Err(_) => continue };
+        let path = entry.path();
+        let file_name = match path.file_name() { Some(n) => n, None => continue };
+        let dst_path = dst.join(file_name);
+        let md = std::fs::symlink_metadata(&path)?;
+        if md.is_dir() {
+            std::fs::create_dir_all(&dst_path)?;
+            copy_dir_recursively(&path, &dst_path)?;
+        } else if md.is_file() {
+            std::fs::copy(&path, &dst_path)?;
+        } else {
+            // ignore special files
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1072,6 +1132,17 @@ async fn handle_packet<A: AsyncWrite + 'static>(
             let SaveArchive { path, format } = m.parse()?;
             db.save_archive(&path, format)?;
             tx.send_msg(&ArchiveSaved { path }).await?;
+        }
+        Packet::Msg(m) if m.id == SaveNative::ID => {
+            match db.save_native() {
+                Ok(path) => {
+                    tx.send_msg(&NativeSaved { path }).await?;
+                }
+                Err(err) => {
+                    warn!(?err, "failed to save native db");
+                    return Err(err);
+                }
+            }
         }
         Packet::Msg(m) if m.id == VTableStream::ID => {
             let VTableStream { id } = m.parse::<VTableStream>()?;

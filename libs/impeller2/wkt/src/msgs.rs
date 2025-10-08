@@ -518,6 +518,20 @@ impl Request for SaveArchive {
     type Reply<B: IoBuf + Clone> = ArchiveSaved;
 }
 
+// Save the database in its native on-disk format to a default location.
+// The server chooses the final path and returns it.
+#[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
+pub struct SaveNative;
+
+#[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
+pub struct NativeSaved {
+    pub path: PathBuf,
+}
+
+impl Request for SaveNative {
+    type Reply<B: IoBuf + Clone> = NativeSaved;
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
 #[serde(rename_all = "snake_case")]
 pub enum ArchiveFormat {
