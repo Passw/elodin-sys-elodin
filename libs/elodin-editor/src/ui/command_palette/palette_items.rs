@@ -664,7 +664,7 @@ pub fn save_db_native_as() -> PaletteItem {
                         .map(|p| p.join(&name).join("db"))
                         .unwrap_or_else(|_| std::path::PathBuf::from(&name).join("db"));
                     commands.send_req_reply(
-                        impeller2_wkt::SaveNativeTo { path },
+                        impeller2_wkt::SaveNative { path },
                         |res: In<
                             Result<impeller2_wkt::NativeSaved, impeller2_wkt::ErrorResponse>,
                         >| {

@@ -519,7 +519,9 @@ impl Request for SaveArchive {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
-pub struct SaveNative;
+pub struct SaveNative {
+    pub path: PathBuf,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
 pub struct NativeSaved {
@@ -527,24 +529,6 @@ pub struct NativeSaved {
 }
 
 impl Request for SaveNative {
-    type Reply<B: IoBuf + Clone> = NativeSaved;
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
-pub struct SaveNativeAs {
-    pub name: String,
-}
-
-impl Request for SaveNativeAs {
-    type Reply<B: IoBuf + Clone> = NativeSaved;
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
-pub struct SaveNativeTo {
-    pub path: PathBuf,
-}
-
-impl Request for SaveNativeTo {
     type Reply<B: IoBuf + Clone> = NativeSaved;
 }
 

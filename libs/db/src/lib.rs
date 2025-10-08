@@ -134,66 +134,6 @@ impl DB {
         db_state.write(self.path.join("db_state"))
     }
 
-    pub fn save_native(&self) -> Result<PathBuf, Error> {
-        let runs_base = default_runs_dir();
-        std::fs::create_dir_all(&runs_base)?;
-
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        let mut run_dir = runs_base.join(format!("{}", ts));
-        let mut i = 1u32;
-        while run_dir.exists() {
-            run_dir = runs_base.join(format!("{}-{}", ts, i));
-            i += 1;
-        }
-        std::fs::create_dir_all(&run_dir)?;
-
-        let final_db_dir = run_dir.join("db");
-        let tmp_db_dir = run_dir.join("db.tmp");
-        let _ = std::fs::remove_dir_all(&tmp_db_dir);
-        std::fs::create_dir_all(&tmp_db_dir)?;
-
-        copy_dir_recursively(&self.path, &tmp_db_dir)?;
-        std::fs::rename(&tmp_db_dir, &final_db_dir)?;
-        debug!(?final_db_dir, "saved native db");
-        Ok(final_db_dir)
-    }
-
-    pub fn save_native_as(&self, name: String) -> Result<PathBuf, Error> {
-        let runs_base = default_runs_dir();
-        std::fs::create_dir_all(&runs_base)?;
-
-        let base = if name.trim().is_empty() {
-            format!(
-                "{}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs()
-            )
-        } else {
-            name.trim().to_string()
-        };
-        let mut run_dir = runs_base.join(&base);
-        let mut i = 1u32;
-        while run_dir.exists() {
-            run_dir = runs_base.join(format!("{}-{}", &base, i));
-            i += 1;
-        }
-        std::fs::create_dir_all(&run_dir)?;
-
-        let final_db_dir = run_dir.join("db");
-        let tmp_db_dir = run_dir.join("db.tmp");
-        let _ = std::fs::remove_dir_all(&tmp_db_dir);
-        std::fs::create_dir_all(&tmp_db_dir)?;
-        copy_dir_recursively(&self.path, &tmp_db_dir)?;
-        std::fs::rename(&tmp_db_dir, &final_db_dir)?;
-        Ok(final_db_dir)
-    }
-
     pub fn save_native_to(&self, target_db_path: PathBuf) -> Result<PathBuf, Error> {
         let (parent_dir, final_db_dir) = if target_db_path
             .file_name()
@@ -474,15 +414,6 @@ impl State {
         msg_log.set_metadata(metadata)?;
         Ok(())
     }
-}
-
-fn default_runs_dir() -> PathBuf {
-    // Prefer HOME (Unix) then USERPROFILE (Windows)
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    home.join("Documents").join("Elodin").join("runs")
 }
 
 fn copy_dir_recursively(src: &Path, dst: &Path) -> Result<(), Error> {
@@ -1211,35 +1142,14 @@ async fn handle_packet<A: AsyncWrite + 'static>(
             db.save_archive(&path, format)?;
             tx.send_msg(&ArchiveSaved { path }).await?;
         }
-        Packet::Msg(m) if m.id == SaveNative::ID => match db.save_native() {
-            Ok(path) => {
-                tx.send_msg(&NativeSaved { path }).await?;
-            }
-            Err(err) => {
-                warn!(?err, "failed to save native db");
-                return Err(err);
-            }
-        },
-        Packet::Msg(m) if m.id == SaveNativeAs::ID => {
-            let SaveNativeAs { name } = m.parse()?;
-            match db.save_native_as(name) {
-                Ok(path) => {
-                    tx.send_msg(&NativeSaved { path }).await?;
-                }
-                Err(err) => {
-                    warn!(?err, "failed to save native db (as)");
-                    return Err(err);
-                }
-            }
-        }
-        Packet::Msg(m) if m.id == SaveNativeTo::ID => {
-            let SaveNativeTo { path } = m.parse()?;
+        Packet::Msg(m) if m.id == SaveNative::ID => {
+            let SaveNative { path } = m.parse()?;
             match db.save_native_to(path) {
                 Ok(path) => {
                     tx.send_msg(&NativeSaved { path }).await?;
                 }
                 Err(err) => {
-                    warn!(?err, "failed to save native db (to)");
+                    warn!(?err, "failed to save native db");
                     return Err(err);
                 }
             }
