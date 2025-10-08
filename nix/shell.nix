@@ -42,6 +42,7 @@ in {
         gst_all_1.gst-plugins-base
         gst_all_1.gst-plugins-good
         flip-link
+        git-lfs
       ]
       ++ lib.optionals stdenv.isLinux [
         alsa-lib
@@ -72,6 +73,7 @@ in {
       jq
       yq
       git-filter-repo
+      git-lfs
       (google-cloud-sdk.withExtraComponents (
         with google-cloud-sdk.components; [gke-gcloud-auth-plugin]
       ))
