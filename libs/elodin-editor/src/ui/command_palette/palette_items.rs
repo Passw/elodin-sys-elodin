@@ -659,10 +659,30 @@ pub fn save_db_native_as() -> PaletteItem {
                 LabelSource::placeholder("Enter a name for the Save DB directory"),
                 "",
                 |In(name): In<String>, mut commands: Commands| {
-                    let name = name.trim().to_string();
-                    let path = std::env::current_dir()
-                        .map(|p| p.join(&name).join("db"))
-                        .unwrap_or_else(|_| std::path::PathBuf::from(&name).join("db"));
+                    let trimmed = name.trim();
+                    if trimmed.is_empty() {
+                        return PaletteEvent::Error("Name cannot be empty".into());
+                    }
+                    if trimmed.eq_ignore_ascii_case("db") {
+                        return PaletteEvent::Error("Name \"db\" is not allowed".into());
+                    }
+                    if trimmed.contains(['/', '\\']) {
+                        return PaletteEvent::Error("Name must not contain path separators".into());
+                    }
+
+                    let cwd = match std::env::current_dir() {
+                        Ok(dir) => dir,
+                        Err(err) => return PaletteEvent::Error(format!("{err}")),
+                    };
+
+                    let target_dir = cwd.join(trimmed);
+                    if target_dir.exists() {
+                        return PaletteEvent::Error(format!(
+                            "Directory \"{trimmed}\" already exists"
+                        ));
+                    }
+
+                    let path = target_dir.join("db");
                     commands.send_req_reply(
                         impeller2_wkt::SaveNative { path },
                         |res: In<

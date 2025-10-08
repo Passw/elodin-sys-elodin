@@ -152,21 +152,32 @@ impl DB {
             (target_db_path.clone(), target_db_path.join("db"))
         };
 
-        let mut run_dir = parent_dir;
-        let mut i = 1u32;
-        let parent_of_run = run_dir
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."));
-        let run_name = run_dir
+        let run_dir = parent_dir.clone();
+
+        if self.path.starts_with(&final_db_dir) || final_db_dir.starts_with(&self.path) {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "target directory overlaps database path",
+            )));
+        }
+
+        if run_dir
             .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "run".to_string());
-        let mut final_db_dir = final_db_dir;
-        while final_db_dir.exists() {
-            run_dir = parent_of_run.join(format!("{}-{}", run_name, i));
-            final_db_dir = run_dir.join("db");
-            i += 1;
+            .and_then(|n| n.to_str())
+            .map(|n| n.eq_ignore_ascii_case("db"))
+            .unwrap_or(false)
+        {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "directory name \"db\" is not allowed",
+            )));
+        }
+
+        if run_dir.exists() || final_db_dir.exists() {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "target directory already exists",
+            )));
         }
 
         std::fs::create_dir_all(&run_dir)?;
