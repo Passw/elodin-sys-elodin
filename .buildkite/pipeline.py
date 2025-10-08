@@ -11,8 +11,9 @@ BRANCH_NAME = (
 )
 
 test_steps = [
-    step(
-        label=":git: git lfs pull",
+    nix_step(
+        label="git lfs pull",
+        flake=".#rust",
         key="git-lfs-pull",
         command="git lfs pull",
     ),
