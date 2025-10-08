@@ -653,7 +653,6 @@ pub fn save_schematic_db() -> PaletteItem {
 }
 
 pub fn save_db_native_as() -> PaletteItem {
-    // Two-step flow: ask for a name, then request save with that name.
     PaletteItem::new("Save DB…", PRESETS_LABEL, |_name: In<String>| {
         PalettePage::new(vec![
             PaletteItem::new(
@@ -661,7 +660,6 @@ pub fn save_db_native_as() -> PaletteItem {
                 "",
                 |In(name): In<String>, mut commands: Commands| {
                     let name = name.trim().to_string();
-                    // Build target path: CWD/<name>/db (server will handle collisions)
                     let path = std::env::current_dir()
                         .map(|p| p.join(&name).join("db"))
                         .unwrap_or_else(|_| std::path::PathBuf::from(&name).join("db"));
@@ -672,7 +670,6 @@ pub fn save_db_native_as() -> PaletteItem {
                         >| {
                             match res.0 {
                                 Ok(saved) => {
-                                    // Prefer showing a path relative to CWD like "/<name>/db"
                                     let display_path = std::env::current_dir()
                                         .ok()
                                         .and_then(|cwd| {

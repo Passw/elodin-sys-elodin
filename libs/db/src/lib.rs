@@ -134,8 +134,6 @@ impl DB {
         db_state.write(self.path.join("db_state"))
     }
 
-    // Save the native DB by copying the entire db directory to
-    // ~/Documents/Elodin/runs/<ts>/db with atomic rename from db.tmp.
     pub fn save_native(&self) -> Result<PathBuf, Error> {
         let runs_base = default_runs_dir();
         std::fs::create_dir_all(&runs_base)?;
@@ -145,7 +143,6 @@ impl DB {
             .unwrap_or_default()
             .as_secs();
 
-        // Build a unique run directory name using epoch seconds.
         let mut run_dir = runs_base.join(format!("{}", ts));
         let mut i = 1u32;
         while run_dir.exists() {
@@ -156,7 +153,6 @@ impl DB {
 
         let final_db_dir = run_dir.join("db");
         let tmp_db_dir = run_dir.join("db.tmp");
-        // Clean any previous tmp and create fresh
         let _ = std::fs::remove_dir_all(&tmp_db_dir);
         std::fs::create_dir_all(&tmp_db_dir)?;
 
@@ -199,8 +195,6 @@ impl DB {
     }
 
     pub fn save_native_to(&self, target_db_path: PathBuf) -> Result<PathBuf, Error> {
-        // If the target path ends with "db", treat its parent as the run directory.
-        // We will create a sibling tmp (db.tmp) and atomically rename to the final path.
         let (parent_dir, final_db_dir) = if target_db_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -218,7 +212,6 @@ impl DB {
             (target_db_path.clone(), target_db_path.join("db"))
         };
 
-        // Collision handling: if final path exists, suffix the parent directory name.
         let mut run_dir = parent_dir;
         let mut i = 1u32;
         let parent_of_run = run_dir
