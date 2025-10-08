@@ -62,6 +62,7 @@
         cmake
         gfortran
         gfortran.cc.lib
+        git-lfs
         xla_ext
       ]
       ++ lib.optionals stdenv.isDarwin [pkgs.libiconv];

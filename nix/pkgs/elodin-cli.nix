@@ -21,6 +21,7 @@
         python3
         cmake
         gfortran
+        git-lfs
       ]
       ++ lib.optionals stdenv.isLinux [
         alsa-lib
