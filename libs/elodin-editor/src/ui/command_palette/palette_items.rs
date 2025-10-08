@@ -21,7 +21,7 @@ use bevy_infinite_grid::InfiniteGrid;
 use egui_tiles::TileId;
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
 use impeller2::types::msg_id;
-use impeller2_bevy::{ComponentPathRegistry, CurrentStreamId, EntityMap, PacketTx, CommandsExt};
+use impeller2_bevy::{CommandsExt, ComponentPathRegistry, CurrentStreamId, EntityMap, PacketTx};
 use impeller2_kdl::ToKdl;
 use impeller2_wkt::{
     ComponentPath, ComponentValue, DbConfig, IsRecording, Material, Mesh, Object3D, SetDbConfig,
@@ -652,29 +652,52 @@ pub fn save_schematic_db() -> PaletteItem {
     )
 }
 
-pub fn save_db_native() -> PaletteItem {
-    PaletteItem::new(
-        "Save DB…",
-        PRESETS_LABEL,
-        |_name: In<String>, mut commands: Commands| {
-            // Minimal UX: send request and exit; log result when reply arrives.
-            commands.send_req_reply(
-                impeller2_wkt::SaveNative,
-                |res: In<Result<impeller2_wkt::NativeSaved, impeller2_wkt::ErrorResponse>>| {
-                    match res.0 {
-                        Ok(saved) => {
-                            info!(path = ?saved.path, "Saved DB");
-                        }
-                        Err(err) => {
-                            warn!(?err, "Failed to save DB");
-                        }
-                    }
-                    true
+pub fn save_db_native_as() -> PaletteItem {
+    // Two-step flow: ask for a name, then request save with that name.
+    PaletteItem::new("Save DB…", PRESETS_LABEL, |_name: In<String>| {
+        PalettePage::new(vec![
+            PaletteItem::new(
+                LabelSource::placeholder("Enter a name for the Save DB directory"),
+                "",
+                |In(name): In<String>, mut commands: Commands| {
+                    let name = name.trim().to_string();
+                    // Build target path: CWD/<name>/db (server will handle collisions)
+                    let path = std::env::current_dir()
+                        .map(|p| p.join(&name).join("db"))
+                        .unwrap_or_else(|_| std::path::PathBuf::from(&name).join("db"));
+                    commands.send_req_reply(
+                        impeller2_wkt::SaveNativeTo { path },
+                        |res: In<
+                            Result<impeller2_wkt::NativeSaved, impeller2_wkt::ErrorResponse>,
+                        >| {
+                            match res.0 {
+                                Ok(saved) => {
+                                    // Prefer showing a path relative to CWD like "/<name>/db"
+                                    let display_path = std::env::current_dir()
+                                        .ok()
+                                        .and_then(|cwd| {
+                                            saved
+                                                .path
+                                                .strip_prefix(cwd)
+                                                .ok()
+                                                .map(|p| format!("/{}", p.display()))
+                                        })
+                                        .unwrap_or_else(|| format!("{}", saved.path.display()));
+                                    info!(path = %display_path, "Saved DB");
+                                }
+                                Err(err) => warn!(?err, "Failed to save DB"),
+                            }
+                            true
+                        },
+                    );
+                    PaletteEvent::Exit
                 },
-            );
-            PaletteEvent::Exit
-        },
-    )
+            )
+            .default(),
+        ])
+        .prompt("Enter a name for the Save DB directory")
+        .into()
+    })
 }
 
 pub fn save_schematic_inner() -> PaletteItem {
@@ -1108,7 +1131,7 @@ impl Default for PalettePage {
             save_schematic(),
             save_schematic_as(),
             save_schematic_db(),
-            save_db_native(),
+            save_db_native_as(),
             load_schematic(),
             set_color_scheme(),
             PaletteItem::new("Documentation", HELP_LABEL, |_: In<String>| {

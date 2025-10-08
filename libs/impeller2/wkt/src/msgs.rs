@@ -532,6 +532,26 @@ impl Request for SaveNative {
     type Reply<B: IoBuf + Clone> = NativeSaved;
 }
 
+// Save the native DB to a named run directory under the default runs folder.
+// The server constructs: ~/Documents/Elodin/runs/<name>/db (with -1 suffixes on collision).
+#[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
+pub struct SaveNativeAs {
+    pub name: String,
+}
+
+impl Request for SaveNativeAs {
+    type Reply<B: IoBuf + Clone> = NativeSaved;
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
+pub struct SaveNativeTo {
+    pub path: PathBuf,
+}
+
+impl Request for SaveNativeTo {
+    type Reply<B: IoBuf + Clone> = NativeSaved;
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, postcard_schema::Schema)]
 #[serde(rename_all = "snake_case")]
 pub enum ArchiveFormat {

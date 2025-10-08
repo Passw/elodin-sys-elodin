@@ -166,6 +166,85 @@ impl DB {
         Ok(final_db_dir)
     }
 
+    pub fn save_native_as(&self, name: String) -> Result<PathBuf, Error> {
+        let runs_base = default_runs_dir();
+        std::fs::create_dir_all(&runs_base)?;
+
+        let base = if name.trim().is_empty() {
+            format!(
+                "{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+            )
+        } else {
+            name.trim().to_string()
+        };
+        let mut run_dir = runs_base.join(&base);
+        let mut i = 1u32;
+        while run_dir.exists() {
+            run_dir = runs_base.join(format!("{}-{}", &base, i));
+            i += 1;
+        }
+        std::fs::create_dir_all(&run_dir)?;
+
+        let final_db_dir = run_dir.join("db");
+        let tmp_db_dir = run_dir.join("db.tmp");
+        let _ = std::fs::remove_dir_all(&tmp_db_dir);
+        std::fs::create_dir_all(&tmp_db_dir)?;
+        copy_dir_recursively(&self.path, &tmp_db_dir)?;
+        std::fs::rename(&tmp_db_dir, &final_db_dir)?;
+        Ok(final_db_dir)
+    }
+
+    pub fn save_native_to(&self, target_db_path: PathBuf) -> Result<PathBuf, Error> {
+        // If the target path ends with "db", treat its parent as the run directory.
+        // We will create a sibling tmp (db.tmp) and atomically rename to the final path.
+        let (parent_dir, final_db_dir) = if target_db_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n == "db")
+            .unwrap_or(false)
+        {
+            (
+                target_db_path
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| PathBuf::from(".")),
+                target_db_path.clone(),
+            )
+        } else {
+            (target_db_path.clone(), target_db_path.join("db"))
+        };
+
+        // Collision handling: if final path exists, suffix the parent directory name.
+        let mut run_dir = parent_dir;
+        let mut i = 1u32;
+        let parent_of_run = run_dir
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let run_name = run_dir
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "run".to_string());
+        let mut final_db_dir = final_db_dir;
+        while final_db_dir.exists() {
+            run_dir = parent_of_run.join(format!("{}-{}", run_name, i));
+            final_db_dir = run_dir.join("db");
+            i += 1;
+        }
+
+        std::fs::create_dir_all(&run_dir)?;
+        let tmp_db_dir = run_dir.join("db.tmp");
+        let _ = std::fs::remove_dir_all(&tmp_db_dir);
+        std::fs::create_dir_all(&tmp_db_dir)?;
+        copy_dir_recursively(&self.path, &tmp_db_dir)?;
+        std::fs::rename(&tmp_db_dir, &final_db_dir)?;
+        Ok(final_db_dir)
+    }
+
     pub fn open(path: PathBuf) -> Result<Self, Error> {
         let mut component_metadata = HashMap::new();
         let mut components = HashMap::new();
@@ -415,9 +494,15 @@ fn default_runs_dir() -> PathBuf {
 
 fn copy_dir_recursively(src: &Path, dst: &Path) -> Result<(), Error> {
     for entry in std::fs::read_dir(src)? {
-        let entry = match entry { Ok(e) => e, Err(_) => continue };
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
         let path = entry.path();
-        let file_name = match path.file_name() { Some(n) => n, None => continue };
+        let file_name = match path.file_name() {
+            Some(n) => n,
+            None => continue,
+        };
         let dst_path = dst.join(file_name);
         let md = std::fs::symlink_metadata(&path)?;
         if md.is_dir() {
@@ -1133,13 +1218,35 @@ async fn handle_packet<A: AsyncWrite + 'static>(
             db.save_archive(&path, format)?;
             tx.send_msg(&ArchiveSaved { path }).await?;
         }
-        Packet::Msg(m) if m.id == SaveNative::ID => {
-            match db.save_native() {
+        Packet::Msg(m) if m.id == SaveNative::ID => match db.save_native() {
+            Ok(path) => {
+                tx.send_msg(&NativeSaved { path }).await?;
+            }
+            Err(err) => {
+                warn!(?err, "failed to save native db");
+                return Err(err);
+            }
+        },
+        Packet::Msg(m) if m.id == SaveNativeAs::ID => {
+            let SaveNativeAs { name } = m.parse()?;
+            match db.save_native_as(name) {
                 Ok(path) => {
                     tx.send_msg(&NativeSaved { path }).await?;
                 }
                 Err(err) => {
-                    warn!(?err, "failed to save native db");
+                    warn!(?err, "failed to save native db (as)");
+                    return Err(err);
+                }
+            }
+        }
+        Packet::Msg(m) if m.id == SaveNativeTo::ID => {
+            let SaveNativeTo { path } = m.parse()?;
+            match db.save_native_to(path) {
+                Ok(path) => {
+                    tx.send_msg(&NativeSaved { path }).await?;
+                }
+                Err(err) => {
+                    warn!(?err, "failed to save native db (to)");
                     return Err(err);
                 }
             }
